@@ -41,9 +41,9 @@ cloud-up: setup   ## create/reuse ClickHouse service + Managed Postgres (writes 
 	$(PY) scripts/cloud.py up
 cloud-pipe: setup ## create/reuse the ClickPipe Postgres CDC (after bootstrap)
 	$(PY) scripts/cloud.py pipe
-cloud-down: setup ## delete the ClickPipe + Managed Postgres (keeps the ClickHouse service and its data)
+cloud-down: setup stop ## delete the ClickPipe + Managed Postgres (keeps the ClickHouse service and its data)
 	$(PY) scripts/cloud.py down
-cloud-destroy: setup ## delete the ClickPipe, Managed Postgres AND the ClickHouse service
+cloud-destroy: setup stop ## delete the ClickPipe, Managed Postgres AND the ClickHouse service
 	$(PY) scripts/cloud.py down --all
 
 # ---------------------------------------------------------------- demo data + app
