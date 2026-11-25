@@ -14,3 +14,5 @@ terraform.tfvars
 *.tfstate*
 .terraform/
 .compose.env
+
+.secrets/
