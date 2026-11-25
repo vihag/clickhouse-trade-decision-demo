@@ -20,10 +20,10 @@ install:          ## ONE COMMAND: clone -> running demo (local Docker, or ClickH
 VENV_OK := .venv/.installed
 setup: $(VENV_OK) ## Python venv + dependencies (idempotent)
 $(VENV_OK): requirements.txt
-	@$(PYTHON) -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else "Python 3.11+ required (found " + sys.version.split()[0] + "); run ./install.sh or set PYTHON=python3.12")'
+	@"$(PYTHON)" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else "Python 3.11+ required (found " + sys.version.split()[0] + "); run ./install.sh or set PYTHON=python3.12")'
 	@echo "creating .venv and installing requirements.txt (first run: about 1 minute)"
-	@if command -v uv >/dev/null 2>&1; then uv venv -q --allow-existing --python $(PYTHON) .venv && uv pip install -q --python $(PY) -r requirements.txt; \
-	else $(PYTHON) -m venv .venv && $(PY) -m pip install -q --upgrade pip && $(PY) -m pip install -q --prefer-binary -r requirements.txt; fi
+	@if command -v uv >/dev/null 2>&1; then uv venv -q --allow-existing --python "$(PYTHON)" .venv && uv pip install -q --python $(PY) -r requirements.txt; \
+	else "$(PYTHON)" -m venv .venv && $(PY) -m pip install -q --upgrade pip && $(PY) -m pip install -q --prefer-binary -r requirements.txt; fi
 	@touch $(VENV_OK)   # a stamp file: .venv/bin/python is a symlink to a possibly read-only interpreter
 
 # ---------------------------------------------------------------- local (Docker) stack
@@ -80,7 +80,7 @@ test-offline: setup ## fast tests: local Postgres (make local-up) + faked ClickH
 	  || { echo "test-offline needs the local Postgres container: run 'make local-up' (or ./install.sh --local) first"; exit 1; }
 	CLICKHOUSE_SECURE=true POSTGRES_MODE=local DATABASE_URL_LOCAL=$$(grep -E '^DATABASE_URL_LOCAL=' .env 2>/dev/null | cut -d= -f2-)  LANGFUSE_TRACING_ENABLED=false CLICKHOUSE_HOST=unreachable.invalid $(PY) -m pytest -q tests/test_offline.py tests/test_features.py
 test: setup       ## LIVE end-to-end against whatever .env points at (resets the demo first)
-	DEMO_LIVE_TESTS=1 $(PY) -m pytest -q -s tests
+	DEMO_LIVE_TESTS=1 $(PY) -m pytest -q -s tests/test_e2e.py
 
 # ---------------------------------------------------------------- optional public URL
 tunnel-bg:        ## public URL via ngrok (NGROK_DOMAIN in .env, else a random ngrok URL)

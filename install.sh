@@ -29,7 +29,7 @@ echo "install mode: $MODE"
 step "Prerequisites"
 pick_python() {  # first Python >= 3.11 on PATH; else let uv (if installed) fetch one
   for c in ${PYTHON:-} python3.14 python3.13 python3.12 python3.11 python3; do
-    if command -v "$c" >/dev/null 2>&1 && "$c" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
+    if command -v "$c" >/dev/null 2>&1 && "$c" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' >/dev/null 2>&1; then
       command -v "$c"; return
     fi
   done
