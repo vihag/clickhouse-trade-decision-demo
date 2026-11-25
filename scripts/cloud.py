@@ -95,7 +95,7 @@ def wait_state(fetch, good, label, timeout=1200):
             last = st
         if st in good:
             return
-        if st in ("failed", "terminated", "deleting", "unavailable") and time.time() - t0 > 60:
+        if str(st).lower() in ("failed", "terminated", "deleting", "unavailable") and time.time() - t0 > 60:
             die(f"{label} is {st}")
         if time.time() - t0 > timeout:
             die(f"{label} not ready after {timeout // 60} min (state {st}); rerun the same command to keep waiting")
@@ -245,8 +245,17 @@ def ensure_pipe(api, oid):
     if res is None:
         return None
     envfile.set_many({"CLICKPIPE_ID": res["id"]})
-    say(f"  ClickPipe created ({res['id']}), state {res.get('state')}. Initial load + CDC start in the background (~1-2 min).")
+    say(f"  ClickPipe created ({res['id']}), state {res.get('state')}. Waiting for the initial load (first run: about 3-5 min).")
     return res["id"]
+
+
+def wait_pipe(api, oid):
+    """Block until the ClickPipe is Running (initial load done, CDC streaming), so the trial can verify the mirror."""
+    sid, cpid = envfile.get("CH_CONSOLE_SERVICE_ID"), envfile.get("CLICKPIPE_ID")
+    if DRY or not (sid and cpid):
+        return
+    wait_state(lambda: api.call("GET", f"/v1/organizations/{oid}/services/{sid}/clickpipes/{cpid}"), {"Running"},
+               "ClickPipe", timeout=900)
 
 
 def prepare_source(sid):
@@ -330,6 +339,7 @@ def main():
             say("  [dry-run] then: make bootstrap, and POST .../clickpipes (Postgres CDC) once the schema exists")
         if a.cmd == "pipe":
             ensure_pipe(api, oid)
+            wait_pipe(api, oid)
         if a.cmd == "down":
             down(api, oid, a.all)
     except RuntimeError as e:

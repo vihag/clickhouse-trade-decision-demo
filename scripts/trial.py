@@ -92,6 +92,25 @@ for name, path in (("cdc", "/api/cdc"), ("health", "/health")):
         pass
 
 from app import config  # loads .env
+if os.getenv("CLICKPIPE_ID") and os.getenv("POSTGRES_MODE") == "managed" and os.getenv("TRIAL_CDC_CHECK", "1") != "0":
+    # cloud: prove the decisions made above reached the ClickHouse mirror through ClickPipes (syncs every ~60 s)
+    want, deadline = {c["trade_id"]: c["final"] for c in res["cases"].values()}, time.time() + 240
+
+    def mirrored(t):
+        rows = H.get(f"/api/trades/{t}/cdc-readback").json().get("trade_rows") or []
+        return bool(rows) and rows[0].get("final_disposition") == want[t]
+
+    while time.time() < deadline:
+        seen = {t for t in want if mirrored(t)}
+        if seen == set(want):
+            break
+        time.sleep(10)
+    cdc = H.get("/api/cdc").json()
+    res["cdc_verified"] = {"replicated": sorted(seen), "all": seen == set(want),
+                           "observed_lag_s": (cdc.get("newest_replicated_decision") or {}).get("observed_lag_s")}
+    print(f"CDC (ClickPipes -> trade_demo_cdc): {len(seen)}/{len(want)} decisions replicated, "
+          f"lag {res['cdc_verified']['observed_lag_s']}s", flush=True)
+    ok = ok and seen == set(want)
 if not a.no_langfuse_check and config.LANGFUSE_ENABLED:
     from datetime import timedelta, timezone
     host, auth = os.environ["LANGFUSE_HOST"].rstrip("/"), (os.environ["LANGFUSE_PUBLIC_KEY"], os.environ["LANGFUSE_SECRET_KEY"])
