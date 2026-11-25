@@ -39,7 +39,7 @@ def reconcile(ch) -> dict:
     if not tables:
         if (os.getenv("CLICKPIPE_ID") or "").strip():
             return {"status": "not configured",
-                    "note": "ClickPipe created; waiting for its initial load into trade_demo_cdc (about 1-2 min)."}
+                    "note": "ClickPipe created; waiting for its initial load into trade_demo_cdc (first run: about 3-5 min)."}
         return {"status": "not configured", "note": "No trade_demo_cdc mirror yet (ClickPipe not created)."}
     ch_counts, last = {}, None
     for key, t in TABLES.items():

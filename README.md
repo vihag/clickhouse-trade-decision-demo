@@ -35,7 +35,7 @@ What `./install.sh` does (each step is idempotent: if it stops with `INSTALL FAI
 
 > Linux with Docker that needs root: `DOCKER="sudo docker" ./install.sh` (and the same for `make teardown`).
 
-## Cloud: ClickHouse Cloud + Managed Postgres + ClickPipes (about 15 minutes)
+## Cloud: ClickHouse Cloud + Managed Postgres + ClickPipes (about 12 minutes)
 
 The full story (CDC back into ClickHouse, console deep links) needs ClickHouse Cloud. You fill **two values**; the
 installer creates everything else through the ClickHouse Cloud API.
@@ -53,11 +53,16 @@ installer creates everything else through the ClickHouse Cloud API.
 
 It creates (or reuses on rerun):
 - a ClickHouse service `trade-decision-demo` (aws, idles after 15 min; IP allow list = this machine's public IP),
-- a **Managed Postgres** `trade-demo-pg` (beta, smallest size `r8gd.medium`, Postgres 17),
+- a **Managed Postgres** `trade-demo-pg` (beta, Postgres 17, the smallest size the region offers: `r8gd.medium`, else
+  `r6gd.medium`, ...; set `PG_SIZE` to pin one),
 - after bootstrap, a **ClickPipe** `trade_demo_pg_cdc` (Postgres CDC, 6 tables → database `trade_demo_cdc`).
 
 Generated passwords go into `.env` and `.pg_conn` (both mode 600, git-ignored) and are never printed.
-The ClickPipe does its initial load in the background; the UI shows "catching up" until the mirror has the rows (~1-2 min).
+The installer waits for the ClickPipe's initial load (first run: about 3-5 min), then the scripted trial checks that
+all three decisions reached `trade_demo_cdc` (CDC lag is about 45-60 s; ClickPipes syncs every 60 s).
+
+Measured on a fresh ClickHouse Cloud trial org (aws/ap-southeast-1): service ~15 s, Managed Postgres ~5 min,
+bootstrap (5M rows) ~1 min, ClickPipe to Running ~4 min, trial + CDC check ~1.5 min.
 
 Clean up when done: `make teardown` (deletes the ClickPipe and Managed Postgres, keeps the service, which idles to
 zero) or `make cloud-destroy` (also deletes the ClickHouse service). Resources bill against your organization
