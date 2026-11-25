@@ -64,6 +64,9 @@ def test_case_c_restricted_reviews():
 
 
 def test_langfuse_traces_and_score():
+    from app import config
+    if not config.LANGFUSE_ENABLED:
+        pytest.skip("Langfuse not configured in .env")
     host = os.environ["LANGFUSE_HOST"].rstrip("/")
     auth = (os.environ["LANGFUSE_PUBLIC_KEY"], os.environ["LANGFUSE_SECRET_KEY"])
     found = {}
