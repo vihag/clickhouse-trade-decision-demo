@@ -21,6 +21,7 @@ API = os.environ.get("CLICKHOUSE_CLOUD_API_URL", "https://api.clickhouse.cloud")
 PG_CONN = envfile.ROOT / ".pg_conn"
 PG_TABLES = ["demo_runs", "account_policies", "trade_requests", "recommendations", "decisions", "audit_events"]
 PIPE_NAME = "trade_demo_pg_cdc"
+PG_SIZES = ["r8gd.medium", "r6gd.medium", "m6gd.large", "r6gd.large", "m8gd.large"]  # smallest first
 PUBLICATION = "trade_demo_cdc_pub"
 SECRET_KEYS = {"password", "caCertificate", "connectionString"}
 DRY = False
@@ -180,10 +181,21 @@ def ensure_postgres(api, oid):
             pid = None
     if not pid:
         region = envfile.get("CLICKHOUSE_REGION", "us-east-1")
-        body = {"name": envfile.get("PG_SERVICE_NAME", "trade-demo-pg"), "provider": "aws", "region": region,
-                "size": envfile.get("PG_SIZE", "r8gd.medium"), "postgresVersion": "17", "haType": "none"}
-        say(f"  Managed Postgres: creating '{body['name']}' ({body['size']}) in aws/{region}")
-        res = api.call("POST", f"/v1/organizations/{oid}/postgres", body, mutate=True)
+        # not every size is offered in every region (e.g. r8gd.medium is rejected in ap-southeast-1): unless PG_SIZE
+        # is set, try the smallest sizes in order and keep the first one the region accepts
+        sizes = [envfile.get("PG_SIZE")] if envfile.get("PG_SIZE") else PG_SIZES
+        res = None
+        for i, size in enumerate(sizes):
+            body = {"name": envfile.get("PG_SERVICE_NAME", "trade-demo-pg"), "provider": "aws", "region": region,
+                    "size": size, "postgresVersion": "17", "haType": "none"}
+            say(f"  Managed Postgres: creating '{body['name']}' ({size}) in aws/{region}")
+            try:
+                res = api.call("POST", f"/v1/organizations/{oid}/postgres", body, mutate=True)
+                break
+            except RuntimeError as e:
+                if "HTTP 400" not in str(e) or "size" not in str(e) or i == len(sizes) - 1:
+                    raise
+                say(f"    size {size} not offered here; trying the next one")
         if res is None:
             return None
         pid = res["id"]
