@@ -1,0 +1,22 @@
+{
+  "run_id_prefix": "demo",
+  "note": "Illustrative USD values in integer cents; fictitious accounts and policy. Timestamps are generated relative to each run.",
+  "window": "recent 15-minute buckets",
+  "window_minutes": 15,
+  "accounts": [
+    {"account_id": 1055, "account_status": "ACTIVE",     "max_single_trade_cents": 10000000, "activity_limit_cents": 25000000, "policy_version": "demo-v1"},
+    {"account_id": 1042, "account_status": "ACTIVE",     "max_single_trade_cents": 10000000, "activity_limit_cents": 25000000, "policy_version": "demo-v1"},
+    {"account_id": 1060, "account_status": "RESTRICTED", "max_single_trade_cents": 10000000, "activity_limit_cents": 25000000, "policy_version": "demo-v1"}
+  ],
+  "baselines": [
+    {"account_id": 1055, "events_cents": [500000, 400000, 300000, 200000], "total_cents": 1400000},
+    {"account_id": 1042, "events_cents": [3000000, 2500000, 2500000, 2000000, 2000000], "total_cents": 12000000}
+  ],
+  "burst": {"account_id": 1042, "events_cents": [2600000, 2500000, 2500000], "total_cents": 7600000},
+  "cases": [
+    {"case": "A", "label": "Routine",        "account_id": 1055, "symbol": "ACME", "candidate_cents": 800000,  "expected_prior_cents": 1400000,  "expected_recommendation": "AUTO_APPROVE", "expected_reason": "WITHIN_ACTIVITY_POLICY",      "expected_final": "AUTO_APPROVED"},
+    {"case": "B", "label": "Activity burst", "account_id": 1042, "symbol": "GLBX", "candidate_cents": 7000000, "expected_prior_cents": 19600000, "expected_recommendation": "REVIEW",       "expected_reason": "ACTIVITY_THRESHOLD_EXCEEDED", "expected_final": "PENDING_REVIEW", "scripted_human_decision": "REJECT"},
+    {"case": "C", "label": "Restricted",     "account_id": 1060, "symbol": "NOVA", "candidate_cents": 1200000, "expected_prior_cents": null,     "expected_recommendation": "REVIEW",       "expected_reason": "ACCOUNT_RESTRICTED",          "expected_final": "PENDING_REVIEW"}
+  ],
+  "demo_accounts": [1042, 1055, 1060]
+}

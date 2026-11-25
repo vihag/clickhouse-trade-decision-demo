@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trade Decision Desk · ClickHouse real-time demo</title>
+<style>
+:root{--bg:#0a0e16;--p:#131b29;--p2:#18233a;--line:#24324d;--y:#faff69;--t:#e9eef7;--m:#8d9ab0;--g:#3ddc84;--r:#ff6b6b;--o:#ffb347;--b:#6cb4ff}
+*{box-sizing:border-box}html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--t);font:15px/1.45 Inter,system-ui,-apple-system,"Segoe UI",sans-serif;display:flex;flex-direction:column;min-height:100vh}
+a{color:var(--b);text-decoration:none}a:hover{text-decoration:underline}
+button{font:inherit;cursor:pointer}
+.m{color:var(--m)}.ok{color:var(--g)}.bad{color:var(--r)}.warn{color:var(--o)}.y{color:var(--y)}
+/* header */
+header{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:18px;padding:10px 18px;border-bottom:1px solid var(--line);background:#0d1320}
+.brand b{display:block;font-size:18px;letter-spacing:.2px}.brand span{font-size:11px;color:var(--m);text-transform:uppercase;letter-spacing:1px}
+.brand a.deck{display:inline-block;margin-top:3px;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--y);text-decoration:none;font-weight:700}
+.brand a.deck[hidden]{display:none}.brand a.deck:hover{text-decoration:underline}.brand a.deck::after{content:" ↗";font-size:8px}
+#tabs{display:flex;gap:8px;justify-content:center;min-width:0}
+.tab{background:var(--p);border:1px solid var(--line);color:var(--t);border-radius:10px;padding:7px 14px;text-align:left;flex:1 1 0;min-width:96px;max-width:260px;transition:.15s;overflow:hidden}
+.tab.open{flex:1.2 1 200px;max-width:340px}
+.tab .n{display:inline-block;width:20px;height:20px;border-radius:50%;background:var(--p2);color:var(--m);text-align:center;font-size:12px;line-height:20px;margin-right:6px;font-weight:700}
+.tab .nm{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;display:inline-block;max-width:calc(100% - 30px)}
+.tab .cp{display:block;font-size:11.5px;color:var(--m);margin-left:26px;min-height:1.35em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tab:hover:not(:disabled){border-color:#3d5280}.tab.sel{border-color:var(--y);background:#1b2433}.tab.sel .n{background:var(--y);color:#111}
+.tab.done .n{background:var(--g);color:#06210f}.tab.done .n::after{content:""}.tab:disabled{opacity:.35;cursor:not-allowed}
+#startwrap{display:flex;align-items:center;gap:10px}
+#startbtn{background:var(--y);color:#111;border:0;border-radius:9px;padding:10px 18px;font-weight:800;font-size:15px}
+#startbtn:disabled{opacity:.6;cursor:wait}
+#status{font-size:12.5px;font-weight:800;letter-spacing:.6px;padding:6px 10px;border-radius:7px;background:var(--p2);color:var(--m);cursor:pointer;white-space:nowrap}
+#status.ready{background:#123d24;color:var(--g)}#status.notready{background:#4a1717;color:var(--r)}#status.starting{color:var(--y)}#status.expired{background:#4a3410;color:var(--o)}
+#statushint{font-size:11.5px;color:var(--m);max-width:220px;line-height:1.25;min-width:0}@media (max-width:1360px){#statushint{display:none}}
+/* brief */
+#brief{margin:12px 18px 0;background:var(--p);border:1px solid var(--line);border-radius:12px;padding:12px 16px;display:grid;grid-template-columns:repeat(4,1fr) auto;gap:16px;align-items:start}
+#brief h3{margin:0 0 4px;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--y)}
+#brief p{margin:0;font-size:13.5px}#brief .ttl{grid-column:1/-1;display:flex;align-items:baseline;gap:10px;margin-bottom:-6px}
+#brief .ttl b{font-size:17px}#runbtn{align-self:center;background:var(--g);color:#06210f;border:0;border-radius:10px;padding:12px 20px;font-weight:800;font-size:16px;white-space:nowrap}
+#runbtn:disabled{opacity:.4;cursor:not-allowed}#runbtn.again{background:var(--p2);color:var(--t);border:1px solid var(--line);font-size:14px}
+.hintline{grid-column:1/-1;font-size:12.5px;margin-top:-6px}
+/* stepper + steps */
+main{flex:1;padding:10px 18px 0}
+#stepper{display:flex;gap:6px;margin-bottom:10px}
+.sp{flex:1;display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--m);padding:6px 10px;border-radius:8px;background:#0f1624;border:1px solid transparent;transition:.3s}
+.sp i{font-style:normal;width:22px;height:22px;border-radius:50%;background:var(--p2);display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex:none}
+.sp.on{color:var(--t);border-color:var(--line);background:var(--p)}.sp.on i{background:var(--y);color:#111}.sp.na{opacity:.35}
+#steps{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.rowlbl{grid-column:1/-1;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--m);margin:2px 0 -4px}
+.step{background:var(--p);border:1px solid var(--line);border-radius:12px;padding:12px 14px;min-height:190px;opacity:0;transform:translateY(10px);transition:opacity .45s ease,transform .45s ease,border-color .3s;position:relative}
+.step.show{opacity:1;transform:none}.step.flash{border-color:var(--y)}.step.na{opacity:.4;transform:none}
+.step h4{margin:0 0 8px;font-size:12px;letter-spacing:.8px;text-transform:uppercase;color:var(--m);display:flex;gap:8px;align-items:center}
+.step h4 i{font-style:normal;background:var(--y);color:#111;border-radius:50%;width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:800}
+.big{font-size:24px;font-weight:800;line-height:1.15}.mid{font-size:16px;font-weight:700}.sm{font-size:12.5px}.xs{font-size:11.5px}
+.kpis{display:flex;gap:14px;margin:6px 0}.kpi b{display:block;font-size:20px;color:var(--y)}.kpi span{font-size:11px;color:var(--m)}
+.bar{position:relative;height:14px;background:#0c1220;border-radius:7px;margin:10px 0 4px;overflow:hidden}
+.bar .a{position:absolute;left:0;top:0;bottom:0;background:#4c7bd9}.bar .c{position:absolute;top:0;bottom:0;background:var(--y)}
+.bar .lim{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--r)}
+.links{margin-top:8px;display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px}.links a::after{content:" ↗";font-size:10px}.links a.dr::after{content:" ›"}
+.verdict{display:inline-block;font-size:21px;font-weight:800;padding:4px 12px;border-radius:8px;margin-bottom:4px}
+.verdict.ok{background:#123d24}.verdict.warn{background:#46340f}.verdict.bad{background:#4a1717}
+ol.why{margin:6px 0 0;padding-left:18px;font-size:12.5px}ol.why li{margin:2px 0}
+textarea{width:100%;background:#0c1320;color:var(--t);border:1px solid var(--line);border-radius:8px;padding:6px;font:inherit;font-size:13px}
+.act{border:0;border-radius:8px;padding:9px 18px;font-weight:800;margin:6px 6px 0 0}.act.approve{background:var(--g);color:#06210f}.act.reject{background:var(--r);color:#2b0606}
+.mini{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:6px}.mini td,.mini th{padding:3px 4px;border-bottom:1px solid var(--line);text-align:left}.mini th{color:var(--m);font-weight:600}
+#empty{background:var(--p);border:1px dashed var(--line);border-radius:12px;padding:40px;text-align:center;color:var(--m);font-size:16px}
+/* audit + footer */
+#auditwrap{margin:12px 18px 0;background:#0f1624;border:1px solid var(--line);border-radius:10px;padding:6px 10px;display:flex;align-items:center;gap:10px}
+#auditwrap>b{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--m);white-space:nowrap}
+#audit{display:flex;gap:8px;overflow-x:auto;scrollbar-width:thin;flex:1;padding:2px 0}
+.ev{flex:none;background:var(--p);border:1px solid var(--line);border-radius:8px;padding:4px 9px;font-size:12px;cursor:pointer;max-width:330px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ev:hover{border-color:#3d5280}.ev .tm{color:var(--m);margin-right:5px}.ev .who{color:var(--y);margin-right:5px}
+footer{display:flex;gap:8px;align-items:center;padding:7px 18px;margin-top:10px;border-top:1px solid var(--line);font-size:11px;color:var(--m);flex-wrap:wrap}
+.fc{padding:2px 8px;border-radius:9px;background:#111a29}.fc::before{content:"● ";}.fc.running::before{color:var(--g)}.fc.error::before{color:var(--r)}.fc.pending::before,.fc.fallback::before,.fc.configured::before{color:var(--o)}.fc.not::before,.fc.off::before{color:var(--m)}
+#counters{margin-left:auto}
+/* drawer */
+#scrim{position:fixed;inset:0;background:#0008;display:none;z-index:9}#scrim.on{display:block}
+#drawer{position:fixed;top:0;right:0;bottom:0;width:min(760px,62vw);background:#0f1624;border-left:1px solid var(--line);z-index:10;transform:translateX(100%);transition:transform .25s ease;display:flex;flex-direction:column}
+#drawer.on{transform:none}#drawer header{display:flex;justify-content:space-between;grid-template-columns:none}#drawer header b{font-size:16px}
+#dbody{overflow:auto;padding:14px 18px;font-size:13px}#dbody h5{margin:14px 0 6px;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--y)}
+pre{background:#080c14;border:1px solid var(--line);border-radius:8px;padding:10px;font:12px/1.45 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word;margin:0}
+.sqlbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:6px 0 0;font-size:12px}.sqlbar button,.links button.copybtn{background:var(--p2);border:1px solid var(--line);color:var(--t);border-radius:6px;padding:3px 9px;font:inherit;font-size:12px;cursor:pointer}
+.notice{margin-top:8px;font-size:12.5px;padding:6px 9px;border-radius:7px;background:#1b2638;border:1px solid var(--line)}.notice.warn{border-color:#6b4f12}.notice.bad{border-color:#6b1d1d}
+.x{background:none;border:0;color:var(--m);font-size:22px}
+.fclink{text-decoration:none!important;color:inherit}.fclink .fc{cursor:pointer}.fclink .fc::after{content:" ↗";font-size:9px}
+.at{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:10px 0;background:var(--p);position:relative}
+.at .hd{display:flex;gap:10px;align-items:center}.at .hd i{font-style:normal;background:var(--y);color:#111;border-radius:50%;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex:none}
+.at .hd b{font-size:14px}.at .st{margin-left:auto;font-size:12px;font-weight:700;white-space:nowrap}.at .body{margin:6px 0 0 32px;font-size:13px}
+.at.done{border-color:#24563a}.at.wait{border-color:#6b4f12}.at .tog{display:none;margin-top:8px}.at .tog.on{display:block}
+.atflow{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--m);margin:2px 0 8px}.atflow b{color:var(--t)}
+.spin{display:inline-block;width:10px;height:10px;border:2px solid var(--o);border-right-color:transparent;border-radius:50%;animation:sp 1s linear infinite;vertical-align:-1px}@keyframes sp{to{transform:rotate(360deg)}}
+</style></head><body>
+<header>
+  <div class="brand"><b>Trade Decision Desk</b><span>Real-time decisioning · synthetic demo</span><a class="deck" id="decklink" href="/deck" target="_blank" rel="noopener" hidden>Deck</a></div>
+  <nav id="tabs"></nav>
+  <div id="startwrap"><div id="statushint"></div><span id="status" onclick="showPreflight()" title="Show readiness checks">NOT STARTED</span><button id="startbtn" onclick="startDemo()">▶ Start demo</button></div>
+</header>
+<section id="brief"></section>
+<main><div id="stepper"></div><div id="stage"></div></main>
+<div id="auditwrap"><b>Audit trail</b><div id="audit"><span class="m sm">Events appear here as the demo runs.</span></div></div>
+<footer><span id="chips"></span><span id="counters"></span></footer>
+<div id="scrim" onclick="closeDrawer()"></div>
+<aside id="drawer"><header><b id="dtitle"></b><button class="x" onclick="closeDrawer()">×</button></header><div id="dbody"></div></aside>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const usd=c=>c==null?'—':'$'+Math.round(c/100).toLocaleString('en-US');
+const tm=s=>s?new Date(s).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'}):'—';
+const num=n=>n==null?'—':Number(n).toLocaleString('en-US');
+async function api(p,o={}){const r=await fetch(p,{headers:{'content-type':'application/json'},...o});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||r.status);return j}
+const LIMIT=25000000;
+const SC=[
+ {id:'A',n:1,name:'Routine trade',kase:'A',acct:1055,cap:'Acct 1055 · $8,000 ACME',
+  b:['Account 1055, an active client, sends a routine $8,000 order for ACME.',
+     'Total the account’s trading over the last 15 minutes in ClickHouse, from a per-minute rollup that an incremental materialized view keeps current over 5M+ raw trade events.',
+     'Recent activity plus this order, compared with the account’s $250,000 15-minute activity limit.',
+     'Within the limit, so it’s approved automatically in under a second with no human involved. The decision is stored in Postgres and traced in Langfuse.']},
+ {id:'S',n:2,name:'Activity spike',burst:true,acct:1042,cap:'Acct 1042 · +$76,000 burst',
+  b:['Account 1042 suddenly fires three trades worth $76,000 within a second.',
+     'New events land in the raw MergeTree table, and the materialized view folds them into the per-minute rollup at insert time. No batch job and no refresh.',
+     'The account’s 15-minute activity jumps from $120,000 to $196,000, and queries see it within moments.',
+     'Nothing to decide yet. The next order from this account will be judged on the fresh $196,000, not stale data.']},
+ {id:'B',n:3,name:'Large trade after spike',kase:'B',acct:1042,cap:'Acct 1042 · $70,000 GLBX',
+  b:['Right after the spike, account 1042 asks to buy $70,000 of GLBX.',
+     'The same real-time query: account 1042’s last 15 minutes, now including the spike.',
+     '$196,000 recent + $70,000 = $266,000, above the $250,000 limit.',
+     'Over the limit, so it isn’t auto-approved. It goes to a human reviewer, and the decision syncs back to ClickHouse through ClickPipes CDC.']},
+ {id:'C',n:4,name:'Restricted account',kase:'C',acct:1060,cap:'Acct 1060 · $12,000 NOVA',
+  b:['Account 1060 is under a compliance restriction and requests a small $12,000 NOVA order.',
+     'The agent still checks live activity in ClickHouse and reads the account’s policy from Postgres.',
+     'A small order with low activity, but the account status is RESTRICTED.',
+     'Restricted accounts always go to a person. The order is held for compliance review and never auto-approved.']}];
+const STEPS=['Incoming trade','Real-time queries','Insight generated','Real-time decision','Action','Back to ClickHouse'];
+let L={tables:{}},ready=false,readyUntil=null,runId=null,trades=[],cur=null,view=null,shown=0,cdcTimer=null,health={},revealed=new Set();
+const deep=new URLSearchParams(location.search).get('trade');
+function b64(sql){const u=new TextEncoder().encode(String(sql??''));let s='';for(const b of u)s+=String.fromCharCode(b);return btoa(s)}
+function nq(sql,db='trade_demo'){return L.new_query?`${L.new_query}?query=${encodeURIComponent(b64(sql))}&database=${encodeURIComponent(db)}`:'#'}
+function pgq(sql){return L.postgres&&L.postgres.new_query?`${L.postgres.new_query}?query=${encodeURIComponent(b64(sql))}&database=${encodeURIComponent(L.postgres.database||'postgres')}`:null}
+function lf(view){const u=view&&view.trace_url;const m=u&&u.match(/^(.*\/project\/[^/]+)\//);return m?m[1]:null}
+function burstKey(){return 'burst:'+runId}
+function getBurst(){try{return JSON.parse(localStorage.getItem(burstKey())||'null')}catch(e){return null}}
+/* ---------- header: tabs + start ---------- */
+function drawTabs(){$('tabs').innerHTML=SC.map(s=>{const done=s.burst?!!getBurst():trades.some(t=>t.case_label==s.kase&&t.final_disposition);
+ const open=revealed.has(s.id);
+ return `<button class="tab ${cur&&cur.id==s.id?'sel':''} ${done?'done':''} ${open?'open':''}" ${ready?'':'disabled'} onclick="selectSc('${s.id}')"><span class="n">${done?'✓':s.n}</span><span class="nm">${open?esc(s.name):'Scenario '+s.n}</span><span class="cp">${open?esc(s.cap):'&nbsp;'}</span></button>`}).join('')}
+function setStatus(cls,txt,hint){$('status').className=cls;$('status').textContent=txt;$('statushint').innerHTML=hint||''}
+let lastStart=null;
+function showStart(st){lastStart=st;const r=st.result;
+ if(st.state=='starting'){setStatus('starting','STARTING…','Resetting data and running checks');ready=false;drawTabs();return}
+ if(st.state=='idle'||!r){setStatus('','NOT STARTED','Click Start demo');ready=false;drawTabs();return}
+ if(r.ready){readyUntil=r.baseline_valid_until_utc?new Date(r.baseline_valid_until_utc):null;ready=true;runId=r.run_id;
+  setStatus('ready','READY',readyUntil?'Window open until '+readyUntil.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}):'');tick()}
+ else{readyUntil=null;ready=false;const f=r.first_failure||{};setStatus('notready','NOT READY',`<span class="bad">${esc(f.name||'')}</span> ${esc((f.hint||'').slice(0,90))}`)}
+ drawTabs();drawBrief();drawStage()}
+function tick(){if(readyUntil&&new Date()>readyUntil&&$('status').className=='ready'){ready=false;setStatus('expired','WINDOW EXPIRED','15-min window passed. Click Start demo');drawTabs();drawBrief()}}
+async function startDemo(){const b=$('startbtn');b.disabled=true;cur=null;view=null;shown=0;revealed=new Set();clearInterval(cdcTimer);drawBrief();drawStage();
+ showStart({state:'starting'});try{showStart(await api('/admin/start-demo',{method:'POST'}))}
+ catch(e){showStart({state:'not_ready',result:{checks:[],info:[],first_failure:{name:'Start demo failed',detail:String(e),hint:'Is the app running? Check logs/app.log, then click Start demo again.'}}})}
+ b.disabled=false;try{L=await api('/api/links')}catch(e){}applyLinks();refresh();loadHealth()}
+function showPreflight(){const r=lastStart&&lastStart.result;if(!r){openDrawer('Readiness checks','<p class="m">Click Start demo to run the checks.</p>');return}
+ openDrawer('Readiness checks',`<p>${r.ready?'<b class="ok">All checks passed</b>':'<b class="bad">Not ready</b>'} · run <code>${esc(r.run_id||'—')}</code> · ${r.elapsed_s}s</p>`+
+ (r.first_failure?`<p class="bad">${esc(r.first_failure.name)}: ${esc(r.first_failure.detail||'')}</p><p>${esc(r.first_failure.hint||'')}</p>`:'')+
+ '<table class="mini">'+r.checks.map(c=>`<tr><td class="${c.ok?'ok':'bad'}">${c.ok?'PASS':'FAIL'}</td><td>${esc(c.name)}</td><td class="m">${esc(c.detail||'')}</td></tr>`).join('')+'</table>'+
+ (r.info||[]).map(i=>`<div class="m xs">${esc(i)}</div>`).join(''))}
+/* ---------- brief ---------- */
+function drawBrief(){const el=$('brief');if(!cur){el.innerHTML=`<div class="ttl"><b>${ready?'Pick a scenario above':'Click ▶ Start demo (top right)'}</b><span class="m">${ready?'Four short scenarios show real-time analytics driving real-time decisions.':'It resets the demo data and checks every service. Scenarios unlock when it shows READY.'}</span></div>`;return}
+ const s=cur,ran=s.burst?!!getBurst():trades.some(t=>t.case_label==s.kase&&t.final_disposition);
+ const needSpike=s.id=='B'&&!getBurst()&&!ran;
+ el.innerHTML=`<div class="ttl"><b>Scenario ${s.n} · ${s.name}</b><span class="m">${s.cap}</span></div>
+ ${['The situation','Real-time analytics','Real-time insight','Real-time decision'].map((h,i)=>`<div><h3>${h}</h3><p>${s.b[i]}</p></div>`).join('')}
+ <button id="runbtn" class="${ran?'again':''}" ${ready?'':'disabled'} onclick="runSc()">${ran?'↻ Replay story':'▶ Run scenario'}</button>
+ ${needSpike?'<div class="hintline warn">Tip: run Scenario 2 (Activity spike) first so this order meets the fresh spike.</div>':''}`}
+function selectSc(id){revealed.add(id);cur=SC.find(s=>s.id==id);view=null;shown=0;clearInterval(cdcTimer);drawTabs();drawBrief();
+ const t=!cur.burst&&trades.find(t=>t.case_label==cur.kase&&t.final_disposition);
+ if(cur.burst&&getBurst()){view={burst:getBurst()};reveal(true);burstExtras()}else if(t){loadTrade(t.trade_id,true)}else drawStage()}
+/* ---------- run ---------- */
+async function runSc(){const s=cur,btn=$('runbtn');btn.disabled=true;view=null;shown=0;drawStage(true);
+ try{if(s.burst){const d=await api('/admin/inject-burst',{method:'POST'});localStorage.setItem(burstKey(),JSON.stringify({...d,at:new Date().toISOString()}));view={burst:d}}
+  else{const d=await api('/api/cases/'+s.kase+'/run',{method:'POST'});view=d}
+  reveal(false);drawTabs();refresh();if(!s.burst)fetchExtras();else burstExtras()}
+ catch(e){$('stage').innerHTML=`<div id="empty" class="bad">Scenario failed: ${esc(e.message)}. Click Start demo to restart.</div>`}
+ drawBrief()}
+async function loadTrade(id,instant){try{view=await api('/api/trades/'+id);const s=SC.find(x=>x.kase==view.request.case_label);if(s){revealed.add(s.id);if(!cur||cur.id!=s.id){cur=s;drawBrief()}drawTabs()}reveal(instant);fetchExtras()}catch(e){}}
+function burstExtras(){api('/api/insight-sql/1042').then(x=>{if(view&&view.burst){view.insight=x;drawStage()}}).catch(()=>{})}
+async function fetchExtras(){if(!view||!view.request)return;const tid=view.request.trade_id,acct=view.request.account_id;
+ api('/api/insight-sql/'+acct).then(x=>{if(view&&view.request&&view.request.trade_id==tid){view.insight=x;drawStage()}}).catch(()=>{});
+ api(`/api/trades/${tid}/pg-readback`).then(x=>{if(view&&view.request&&view.request.trade_id==tid){view.pgrb=x;drawStage()}}).catch(()=>{});
+ pollCdc()}
+function pollCdc(){clearInterval(cdcTimer);if(!view||!view.request)return;const tid=view.request.trade_id,want=view.decision?view.decision.version:1,t0=Date.now();view.cdcWait0=t0;
+ const go=async()=>{if(!view||!view.request||view.request.trade_id!=tid){clearInterval(cdcTimer);return}
+  try{const c=await api(`/api/trades/${tid}/cdc-readback`);view.cdc=c;const r=(c.trade_rows||[])[0];if(r&&r.version>=want||c.status=='not configured'||Date.now()-t0>240000)clearInterval(cdcTimer);drawStage()}catch(e){}};
+ go();cdcTimer=setInterval(go,5000)}
+function reveal(instant){const n=view&&view.burst?4:6;if(instant){shown=n;drawStage();return}shown=0;drawStage();
+ const step=()=>{shown++;drawStage(false,shown);if(shown<n)setTimeout(step,650)};setTimeout(step,150)}
+/* ---------- stage ---------- */
+function stepper(){const na=cur&&cur.burst;$('stepper').innerHTML=ready||cur?STEPS.map((t,i)=>`<div class="sp ${i<shown?'on':''} ${na&&i>3?'na':''}"><i>${i+1}</i>${cur&&cur.burst&&i==0?'Incoming activity':t}</div>`).join(''):''}
+let animIdx=-1;
+function card(i,body,cls=''){return `<div class="step ${i<shown&&i!=animIdx?'show':''} ${cls}" id="st${i}"><h4><i>${i+1}</i>${STEPS[i]==='Incoming trade'&&cur.burst?'Incoming activity':STEPS[i]}</h4>${body}</div>`}
+function drawStage(loading,flash){stepper();const st=$('stage');
+ if(!cur){st.innerHTML=ready?'<div id="empty">Each scenario plays as a six-step story: the trade arrives, ClickHouse answers in milliseconds, the insight and decision follow, a human acts when needed, and the result flows back to ClickHouse.</div>':'';return}
+ if(!view){st.innerHTML=`<div id="empty">${loading?'Running scenario… querying ClickHouse in real time':'Press <b>▶ Run scenario</b> to play the storyline, one step at a time.'}</div>`;return}
+ const cm=$('cmt'),cmv=cm?cm.value:null;animIdx=flash?flash-1:-1;
+ const c=view.burst?burstCards():tradeCards();animIdx=-1;
+ st.innerHTML=`<div id="steps"><div class="rowlbl">Scenario context</div>${c.slice(0,3).join('')}<div class="rowlbl">Decision</div>${c.slice(3).join('')}</div>`;
+ if(cmv!=null&&$('cmt'))$('cmt').value=cmv;
+ if(flash){const e=$('st'+(flash-1));if(e&&!e.classList.contains('na')){void e.offsetWidth;requestAnimationFrame(()=>{e.classList.add('show','flash');setTimeout(()=>e.classList.remove('flash'),800)})}}}
+function bar(prior,cand,lim){const sc=Math.max(lim*1.15,(prior||0)+(cand||0));const p=(prior||0)/sc*100,c=(cand||0)/sc*100,l=lim/sc*100;
+ return `<div class="bar"><div class="a" style="width:${p}%"></div><div class="c" style="left:${p}%;width:${c}%"></div><div class="lim" style="left:${l}%"></div></div>
+ <div class="xs m"><span style="color:#4c7bd9">■</span> last 15 min &nbsp;<span class="y">■</span> ${cand?'this order':'spike'} &nbsp;<span class="bad">|</span> limit ${usd(lim)}</div>`}
+function chLinks(){const T=L.tables||{};return `<a href="${T.rollup||'#'}" target="_blank">Rollup table (AggregatingMergeTree)</a><a href="${T.mv||'#'}" target="_blank">Materialized view</a><a href="${T.raw||'#'}" target="_blank">Raw events (MergeTree)</a>`}
+function queryStats(ms,rr){const x=view.insight;let s=`<div class="kpis"><div class="kpi"><b>${ms!=null?ms+' ms':'—'}</b><span>round trip to ClickHouse</span></div><div class="kpi"><b>${num(rr)}</b><span>rows read (rollup)</span></div>`;
+ if(x&&x.raw_stats&&x.raw_stats.granules_total){const g=x.raw_stats,pct=(100*(1-g.granules_selected/g.granules_total)).toFixed(1);s+=`<div class="kpi"><b>${pct}%</b><span>raw data skipped (${num(g.granules_selected)}/${num(g.granules_total)} granules)</span></div>`}
+ return s+'</div>'+(x?`<div class="xs m">Raw table: ${num(x.raw_total_rows)} rows · the primary key (account_id, event_ts) lets ClickHouse skip almost all of it.</div>`:'<div class="xs m">Loading index stats…</div>')}
+function burstCards(){const b=view.burst,lim=LIMIT;return [
+ card(0,`<div class="big">+${usd(b.burst_cents)}</div><div class="mid">3 trades from account 1042</div><div class="sm m">Inserted at ${tm(b.inserted_at_utc)}, all within a second</div>`),
+ card(1,`<div class="sm">Insert → raw <b>activity_events</b> (MergeTree) → incremental MV → <b>account_activity_1m</b> (AggregatingMergeTree)</div>
+  <div class="kpis"><div class="kpi"><b>${b.insert_ack_ms} ms</b><span>insert acknowledged</span></div><div class="kpi"><b>${b.visible_after_ms} ms</b><span>visible to queries</span></div><div class="kpi"><b>${num(b.read_rows)}</b><span>rows read</span></div></div>
+  <div class="links"><a class="dr" href="#" onclick="sqlDrawer(1042);return false">SQL + EXPLAIN</a>${view.insight?consoleLinks(nq(view.insight.mv_sql),view.insight.mv_sql,'Open in ClickHouse console'):(L.sql_console?`<a href="${L.sql_console}" target="_blank" rel="noopener">Open in ClickHouse console</a>`:'')}${chLinks()}</div>`),
+ card(2,`<div class="sm m">Account 1042 · last 15 minutes</div><div class="big"><span class="m" style="font-size:18px">${usd(b.before_cents)} →</span> ${usd(b.recent_notional_cents)}</div>
+  <div class="sm">${Math.round(100*b.recent_notional_cents/lim)}% of the ${usd(lim)} limit, with only ${usd(lim-b.recent_notional_cents)} of headroom left</div>${bar(b.before_cents,b.burst_cents,lim)}`),
+ card(3,`<div class="verdict warn">Risk picture updated</div><div class="sm">No order to decide yet. The next order from 1042 will be judged on <b>${usd(b.recent_notional_cents)}</b>, not on stale numbers.</div><div class="sm m" style="margin-top:8px">Next: Scenario 3 sends a $70,000 order from the same account.</div>`),
+ card(4,'<div class="m sm">Not applicable to this scenario.</div>','na'),card(5,'<div class="m sm">Not applicable to this scenario.</div>','na')]}
+function verdict(dec,rec){const f=dec?dec.final_disposition:'',r=rec?rec.reason_code:'';
+ if(f=='AUTO_APPROVED')return['ok','Approved automatically','Within the account’s activity policy.'];
+ if(f=='HUMAN_REJECTED')return['bad','Rejected by reviewer',dec.review_comment||''];
+ if(f=='HUMAN_APPROVED')return['ok','Approved by reviewer',dec.review_comment||''];
+ if(r=='ACTIVITY_THRESHOLD_EXCEEDED')return['warn','Sent for human review',`It would take 15-minute activity to ${usd(rec.prospective_cents)}, above the ${usd(rec.activity_limit_cents)} limit.`];
+ if(r=='ACCOUNT_RESTRICTED')return['warn','Held for compliance review','The account is restricted, and restricted accounts always need a person.'];
+ if(r=='SINGLE_TRADE_LIMIT')return['warn','Sent for human review','The order is above the single-trade cap.'];
+ if(r=='CONTEXT_UNAVAILABLE')return['warn','Sent for human review','Live analytics were unavailable, so it fails safe to a person.'];
+ return['warn',f||'Requested',''];}
+function tradeCards(){const d=view,q=d.request,rec=d.recommendation||{},dec=d.decision,ctx=rec.analytics_context||{},pol=d.policy||{},restricted=pol.account_status!='ACTIVE';
+ const [vc,vt,vs]=verdict(dec,rec),ltrace=d.trace_url,lfp=lf(d),P=L.postgres;
+ const c1=card(0,`<div class="big">${usd(q.notional_cents)} <span class="mid">${esc(q.symbol)}</span></div><div class="mid">Account ${q.account_id} · <span class="${restricted?'bad':'ok'}">${esc(pol.account_status||'')}</span></div>
+  <div class="sm m">Buy order received at ${tm(q.requested_at)}</div><div class="sm m">Policy ${esc(pol.policy_version||'')}: ${usd(pol.activity_limit_cents)} per 15 min · ${usd(pol.max_single_trade_cents)} single-trade cap</div>
+  <div class="links">${P?`<a href="${P.trade_requests}" target="_blank">Trade request in Postgres</a><a href="${P.account_policies}" target="_blank">Account policy in Postgres</a>`:''}</div>`);
+ const c2=card(1,`<div class="sm">MCP tool <b>get_recent_activity</b> → ClickHouse <b>account_activity_1m</b> (AggregatingMergeTree, fed by an incremental MV from raw <b>activity_events</b>)</div>
+  ${queryStats(ctx.query_ms,ctx.read_rows)}
+  <div class="links"><a class="dr" href="#" onclick="sqlDrawer(${q.account_id});return false">SQL + EXPLAIN</a>${view.insight?consoleLinks(nq(view.insight.mv_sql),view.insight.mv_sql,'Open in ClickHouse console'):(L.sql_console?`<a href="${L.sql_console}" target="_blank" rel="noopener">Open in ClickHouse console</a>`:'')}${chLinks()}</div>`);
+ const prior=rec.prior_notional_cents,lim=rec.activity_limit_cents||LIMIT;
+ const c3=card(2,restricted?`<div class="big bad">Account restricted</div><div class="sm">Recent activity ${usd(ctx.recent_notional_cents||0)} in ${ctx.recent_trade_count||0} trades: the numbers are fine, but policy says this account needs a person.</div><div class="sm m" style="margin-top:6px">Live data as of ${tm(ctx.query_observed_at_utc)}</div>`:
+  `<div class="sm m">Last 15 min + this order</div><div class="big">${usd(prior)} + ${usd(rec.candidate_cents)} = <span class="${rec.prospective_cents>lim?'bad':'ok'}">${usd(rec.prospective_cents)}</span></div>
+  <div class="sm">${rec.prospective_cents>lim?`${usd(rec.prospective_cents-lim)} <b class="bad">over</b>`:`${usd(lim-rec.prospective_cents)} <b class="ok">headroom</b> left`} against the ${usd(lim)} limit · ${ctx.recent_trade_count} recent trade${ctx.recent_trade_count==1?'':'s'}</div>
+  ${bar(prior,rec.candidate_cents,lim)}<div class="xs m">Live data as of ${tm(ctx.query_observed_at_utc)} · latest minute ${tm(ctx.latest_activity_minute_utc)}</div>`);
+ const ruleTxt=restricted?`status = RESTRICTED → <b>review</b>`:`${usd(prior)} + ${usd(rec.candidate_cents)} = ${usd(rec.prospective_cents)} ${rec.prospective_cents>lim?'&gt;':'≤'} ${usd(lim)} → <b>${rec.recommendation=='AUTO_APPROVE'?'approve':'review'}</b>`;
+ const c4=card(3,`<div class="verdict ${vc}">${vt}</div><div class="sm">${esc(vs)}</div>
+  <ol class="why"><li>Called MCP tool <b>get_recent_activity</b> as read-only user <b>${esc(ctx.clickhouse_user||'demo_ro')}</b>: ${usd(ctx.recent_notional_cents)} in ${ctx.recent_trade_count??'—'} trade${ctx.recent_trade_count==1?'':'s'} (${ctx.query_ms??'—'} ms)</li>
+  <li>Loaded the account policy from Postgres: ${esc(pol.account_status)} · limit ${usd(pol.activity_limit_cents)}</li><li>Applied the rules: ${ruleTxt}</li>
+  <li>Stored the recommendation, decision and audit record in one Postgres transaction</li></ol>
+  <div class="xs m">Rule-based agent with deterministic policy (no LLM). Every step is traced.</div>
+  <div class="links">${ltrace?`<a href="${ltrace}" target="_blank">Langfuse trace</a>`:''}<a class="dr" href="#" onclick="techDrawer();return false">Technical detail</a></div>`);
+ let a5;const pend=dec&&dec.final_disposition=='PENDING_REVIEW',rb=d.pgrb,row=rb&&rb.rows&&rb.rows[0];
+ const pgLinks=`<div class="links">${dec&&!pend?`<a class="dr" href="#" onclick="auditTrail();return false">Audit trail: Postgres → ClickPipes → ClickHouse</a>`:''}<a class="dr" href="#" onclick="pgDrawer();return false">Show the row in Postgres (SQL + result)</a>${rb&&pgq(rb.sql)?consoleLinks(pgq(rb.sql),rb.sql,'Open in Postgres console'):''}</div>`;
+ if(pend)a5=`<div class="mid">${restricted?'Compliance review needed':'Your decision, reviewer'}</div><textarea id="cmt" rows="2">${restricted?'Account under compliance restriction; hold.':'Burst activity pushes account past limit; reject.'}</textarea>
+  <button class="act approve" onclick="review('APPROVE')">Approve</button><button class="act reject" onclick="review('REJECT')">Reject</button>${restricted?'<div class="xs m" style="margin-top:4px">For the demo, leave this one pending.</div>':''}`;
+ else if(dec&&dec.reviewer)a5=`<div class="verdict ${dec.final_disposition=='HUMAN_REJECTED'?'bad':'ok'}">${dec.final_disposition=='HUMAN_REJECTED'?'Rejected':'Approved'}</div><div class="sm">by ${esc(dec.reviewer)}: “${esc(dec.review_comment||'')}”</div>
+  ${row?`<div class="sm ok" style="margin-top:6px">✔ Landed in Postgres: <b>${esc(row.final_disposition)}</b> · version ${row.version} · ${rb.ms} ms readback</div>`:''}${pgLinks}`;
+ else a5=`<div class="mid ok">No action needed</div><div class="sm">Straight-through processing: no human touched this order.</div>${row?`<div class="sm ok" style="margin-top:6px">✔ In Postgres: <b>${esc(row.final_disposition)}</b> · version ${row.version}</div>`:''}${pgLinks}`;
+ if(d.actionMsg)a5+=`<div class="notice ${d.actionMsg.cls}">${d.actionMsg.html}</div>`;
+ const c5=card(4,a5);
+ return [c1,c2,c3,c4,c5,card(5,cdcCard())]}
+function cdcCard(){const d=view,c=d.cdc,want=d.decision?d.decision.version:1,T=L.tables||{},lfp=lf(d);
+ const O=L.observability||{},obsLink=O.configured?`<a href="${O.service}" target="_blank" title="This app's own traces, logs and latency metrics in ClickHouse Observability (ClickStack)">Open in observability</a>`:'';
+ const links=`<div class="links">${obsLink}<a href="${L.clickpipes||'#'}" target="_blank">${L.clickpipe_id?'ClickPipe':'ClickPipes (list)'}</a><a class="dr" href="#" onclick="cdcDrawer();return false">Show the row in ClickHouse (SQL + result)</a><a href="${T.cdc_decisions||'#'}" target="_blank">Mirror table</a>${lfp?`<a href="${lfp}/scores" target="_blank">Langfuse scores</a><a href="${lfp}/sessions/${encodeURIComponent(d.request.run_id)}" target="_blank">Langfuse session (this run)</a>`:''}</div>`;
+ if(!c)return `<div class="sm m">Checking the ClickHouse mirror…</div>${links}`;
+ if(c.status=='not configured'||c.status=='unavailable')return `<div class="sm warn">${c.note?esc(c.note):`ClickPipes mirror ${esc(c.status)}.`}</div>${links}`;
+ const r=(c.trade_rows||[])[0],ok=r&&r.version>=want,R=(c.rates_rows||[])[0]||{};
+ const head=ok?`<div class="mid ok">✔ Replicated to ClickHouse</div><div class="sm">Postgres → ClickPipes CDC → ClickHouse: <b>${esc(r.final_disposition)}</b> v${r.version}, lag <b class="y">${r.replication_lag_s}s</b></div>`:
+  `<div class="mid warn">⏳ Syncing via ClickPipes…</div><div class="sm m">CDC syncs about every 60 s${r?` (mirror has v${r.version}: ${esc(r.final_disposition)})`:''} · waiting ${Math.round((Date.now()-(d.cdcWait0||Date.now()))/1000)}s</div>`;
+ const kp=R.decisions?`<div class="kpis"><div class="kpi"><b>${R.straight_through_pct}%</b><span>straight-through</span></div><div class="kpi"><b>${R.approval_rate_pct}%</b><span>approval rate</span></div><div class="kpi"><b>${R.pending}</b><span>pending review</span></div></div>`:'';
+ const tb=(c.analytics_rows||[]).length?`<table class="mini"><tr><th>Reason</th><th>Outcome</th><th>#</th><th>Time to final</th></tr>${c.analytics_rows.map(x=>`<tr><td>${esc(x.reason)}</td><td>${esc(x.outcome)}</td><td>${x.decisions}</td><td>${x.avg_time_to_final_s}s</td></tr>`).join('')}</table>`:'';
+ return head+kp+tb+links}
+/* ---------- actions ---------- */
+async function review(dcs){try{const d=await api('/api/trades/'+view.request.trade_id+'/review',{method:'POST',body:JSON.stringify({decision:dcs,comment:($('cmt')||{}).value||''})});
+ const keep={insight:view.insight};view={...d,...keep};drawStage();fetchExtras();refresh();const e=$('st4');if(e){e.classList.add('flash');setTimeout(()=>e.classList.remove('flash'),900)}
+ auditTrail(dcs)}
+ catch(e){await reviewFailed(e)}}
+async function reviewFailed(e){const tid=view.request.trade_id;let cur2=null;try{cur2=await api('/api/trades/'+tid)}catch(x){}
+ if(!cur2){view.actionMsg={cls:'warn',html:'This order is from an earlier run: <b>Start demo</b> was clicked after it was shown, so it no longer exists. Click <b>▶ Run scenario</b> to send it again.'};drawStage();return}
+ if(cur2.decision&&cur2.decision.final_disposition!='PENDING_REVIEW'){const keep={insight:view.insight};view={...cur2,...keep,actionMsg:{cls:'m',html:'Already decided, so this shows the recorded outcome.'}};drawStage();fetchExtras();return}
+ view.actionMsg={cls:'bad',html:'The decision couldn’t be saved ('+esc(e.message)+'). Try again in a moment.'};drawStage()}
+/* ---------- drawers ---------- */
+function openDrawer(t,h){$('dtitle').textContent=t;$('dbody').innerHTML=h;$('drawer').classList.add('on');$('scrim').classList.add('on')}
+function closeDrawer(){$('drawer').classList.remove('on');$('scrim').classList.remove('on');clearTimeout(atTimer);atTid=null}
+document.addEventListener('keydown',e=>{if(e.key=='Escape')closeDrawer()});
+const SQLS={};let sqlN=0;
+function stashSql(sql){const k='q'+(++sqlN);SQLS[k]=sql;return k}
+function tryCopy(s){try{const ta=document.createElement('textarea');ta.value=s;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove()}catch(e){}}
+function copySqlKey(k,btn){const s=SQLS[k];if(!s)return;const done=()=>{if(btn){const t=btn.textContent;btn.textContent='Copied ✓';setTimeout(()=>{if(btn.textContent==='Copied ✓')btn.textContent=t},1200)}};
+ const p=navigator.clipboard&&navigator.clipboard.writeText?navigator.clipboard.writeText(s):null;
+ if(p&&p.then)p.then(done).catch(()=>{tryCopy(s);done()});else{tryCopy(s);done()}}
+function openAndCopy(k){const s=SQLS[k];if(s){try{if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(s);else tryCopy(s)}catch(e){}}}
+function consoleLinks(url,sql,label){if(!url||!sql)return '';const k=stashSql(sql);return `<a href="${url}" target="_blank" rel="noopener" onclick="openAndCopy('${k}')">${label}</a><button type="button" class="copybtn" onclick="copySqlKey('${k}',this)">Copy SQL</button>`}
+function sqlBlock(sql,consoleUrl,label){const k=stashSql(sql);return `<pre>${esc(sql)}</pre><div class="sqlbar"><button type="button" onclick="copySqlKey('${k}',this)">Copy SQL</button>${consoleUrl?`<a href="${consoleUrl}" target="_blank" rel="noopener" onclick="openAndCopy('${k}')">${label||'Open in ClickHouse console'} ↗</a>`:''}</div>`}
+function tbl(rows){if(!rows||!rows.length)return '<div class="m">(no rows)</div>';const k=Object.keys(rows[0]);return `<table class="mini"><tr>${k.map(x=>`<th>${esc(x)}</th>`).join('')}</tr>${rows.map(r=>`<tr>${k.map(x=>`<td>${esc(r[x])}</td>`).join('')}</tr>`).join('')}</table>`}
+const insCache={};async function ins(acct){if(view&&view.insight&&view.insight.account_id==acct)return view.insight;if(!insCache[acct])insCache[acct]=await api('/api/insight-sql/'+acct);return insCache[acct]}
+async function sqlDrawer(acct){openDrawer('Real-time query · account '+acct,'<p class="m">Running EXPLAIN…</p>');try{const x=await ins(acct);const g=x.raw_stats||{},m=x.mv_stats||{};
+ openDrawer('Real-time query · account '+acct,`<p>The agent’s MCP tool runs this exact query (read-only user) against the rollup table that the incremental materialized view maintains.</p>
+ <h5>1 · Insight query (AggregatingMergeTree rollup)</h5>${sqlBlock(x.mv_sql,nq(x.mv_sql))}
+ <p class="sm">Re-run now: <b>${x.mv_ms??"—"} ms</b>, read <b>${num(x.mv_read_rows)}</b> rows of ${num(x.mv_total_rows)} · granules ${num(m.granules_selected)}/${num(m.granules_total)}</p>
+ <h5>EXPLAIN indexes = 1</h5><pre>${esc(x.mv_explain)}</pre>
+ <h5>2 · Same question on the raw MergeTree table (${num(x.raw_total_rows)} rows)</h5>${sqlBlock(x.raw_sql,nq(x.raw_sql))}
+ <p class="sm">Re-run now: <b>${x.raw_ms??"—"} ms</b>, read <b>${num(x.raw_read_rows)}</b> of ${num(x.raw_total_rows)} rows · granules <b>${num(g.granules_selected)}/${num(g.granules_total)}</b> (primary key on account_id, event_ts)</p>
+ <h5>EXPLAIN indexes = 1</h5><pre>${esc(x.raw_explain)}</pre>
+ <h5>Explore</h5><div class="links">${chLinks()}<a href="${L.query_insights}" target="_blank">Query insights</a></div>`)}catch(e){openDrawer('Real-time query','<p class="bad">ClickHouse not reachable: '+esc(e.message)+'</p>')}}
+function techDrawer(){const d=view;openDrawer('Technical detail · decision',`<h5>Identifiers</h5>${tbl([{trade_id:d.request.trade_id,trace_id:d.decision&&d.decision.trace_id,run_id:d.request.run_id,version:d.decision&&d.decision.version}])}
+ <h5>Recommendation (Postgres trade_demo.recommendations)</h5><pre>${esc(JSON.stringify({...d.recommendation,analytics_context:undefined},null,2))}</pre>
+ <h5>MCP tool result (analytics context)</h5><pre>${esc(JSON.stringify((d.recommendation||{}).analytics_context,null,2))}</pre>
+ <h5>Decision row</h5><pre>${esc(JSON.stringify(d.decision,null,2))}</pre>${d.trace_url?`<div class="links"><a href="${d.trace_url}" target="_blank">Open Langfuse trace</a></div>`:''}`)}
+async function pgDrawer(){const tid=view.request.trade_id;openDrawer('Postgres (OLTP) readback','<p class="m">Querying Postgres…</p>');try{const x=await api(`/api/trades/${tid}/pg-readback`);view.pgrb=x;
+ openDrawer('Postgres (OLTP) readback',`<p>${esc(x.store)} is the system of record. The query ran just now in ${x.ms} ms.</p><h5>Decision row</h5>${sqlBlock(x.sql,pgq(x.sql),'Open in Postgres console')}<div style="margin-top:8px">${tbl(x.rows)}</div>
+ <h5>Audit events</h5>${sqlBlock(x.audit_sql,pgq(x.audit_sql),'Open in Postgres console')}<div style="margin-top:8px">${tbl(x.audit_rows)}</div>
+ ${L.postgres?`<div class="links"><a href="${L.postgres.decisions}" target="_blank">decisions table</a><a href="${L.postgres.audit_events}" target="_blank">audit_events table</a><a href="${L.postgres.home}" target="_blank">Managed Postgres service</a></div>`:''}`)}catch(e){openDrawer('Postgres readback','<p class="bad">'+esc(e.message)+'</p>')}}
+async function cdcDrawer(){const tid=view.request.trade_id;openDrawer('ClickHouse CDC mirror','<p class="m">Querying the mirror…</p>');try{const c=await api(`/api/trades/${tid}/cdc-readback`);view.cdc=c;
+ openDrawer('ClickHouse CDC mirror (ClickPipes)',`<p>ClickPipes copies every Postgres change into <b>trade_demo_cdc</b> (ReplacingMergeTree; current state = FINAL, not deleted). Status: <b>${esc(c.status)}</b>.</p>
+ <h5>This decision, in ClickHouse</h5>${sqlBlock(c.trade_sql,nq(c.trade_sql,'trade_demo_cdc'))}<div style="margin-top:8px">${tbl(c.trade_rows)}</div>
+ <h5>Product analytics over the mirror</h5>${sqlBlock(c.rates_sql,nq(c.rates_sql,'trade_demo_cdc'))}<div style="margin-top:8px">${tbl(c.rates_rows)}</div>
+ <div style="margin-top:10px">${sqlBlock(c.analytics_sql,nq(c.analytics_sql,'trade_demo_cdc'))}</div><div style="margin-top:8px">${tbl(c.analytics_rows)}</div>
+ <div class="links"><a href="${L.clickpipes}" target="_blank">ClickPipe metrics</a>${L.clickpipe_id?`<a href="${L.clickpipe_tables}" target="_blank">ClickPipe tables</a>`:''}<a href="${L.tables.cdc_decisions}" target="_blank">Mirror: decisions</a><a href="${L.tables.cdc_audit}" target="_blank">Mirror: audit events</a></div>`)}catch(e){openDrawer('CDC mirror','<p class="bad">'+esc(e.message)+'</p>')}}
+/* ---------- audit trail pop-up (after Approve / Reject) ---------- */
+let atTimer=null,atTid=null,atT0=0,atOpen={},atLast=null;
+function atTog(k){atOpen[k]=!atOpen[k];const e=$('tog-'+k);if(e)e.classList.toggle('on',atOpen[k]);const b=$('tb-'+k);if(b)b.textContent=(atOpen[k]?'Hide ':'Show ')+b.dataset.l}
+function atBtn(k,label){return `<a class="dr" href="#" id="tb-${k}" data-l="${esc(label)}" onclick="atTog('${k}');return false">${atOpen[k]?'Hide ':'Show '}${esc(label)}</a>`}
+function atSec(n,title,state,stTxt,body){return `<div class="at ${state}"><div class="hd"><i>${n}</i><b>${title}</b><span class="st ${state=='done'?'ok':state=='wait'?'warn':'m'}">${stTxt}</span></div><div class="body">${body}</div></div>`}
+async function auditTrail(dcs){if(!view||!view.request)return;const tid=view.request.trade_id;clearTimeout(atTimer);atTid=tid;atT0=Date.now();atOpen={};atLast=null;
+ const dec=view.decision||{},verb=dcs?(dcs=='APPROVE'?'Approved':'Rejected'):(dec.final_disposition||'Decision');
+ openDrawer('Audit trail · '+verb,`<p id="at-lead">${dcs?`<b>${verb}.</b> `:''}Here is where that click went, end to end: committed to the Postgres system of record, streamed by ClickPipes CDC, and queryable in ClickHouse.</p>
+  <div class="atflow"><b>Postgres</b> (OLTP) → <b>ClickPipes</b> CDC → <b>ClickHouse</b> (trade_demo_cdc)</div><div id="at-body"><p class="m">Reading Postgres…</p></div>`);
+ atPoll()}
+async function atPoll(){const tid=atTid;if(!tid)return;let x;
+ try{x=await api(`/api/trades/${tid}/audit-trail`)}catch(e){if(atTid==tid)$('at-body').innerHTML=`<div class="notice bad">Couldn’t read the audit trail (${esc(e.message)}).</div>`;return}
+ if(atTid!=tid||!$('at-body'))return;atLast=x;drawTrail(x);
+ const st=x.clickhouse.status,el=Date.now()-atT0;
+ if(st=='syncing'&&el<180000)atTimer=setTimeout(atPoll,3000)}
+function drawTrail(x){const p=x.postgres,c=x.clickhouse,row=(p.rows||[])[0]||{},el=Math.round((Date.now()-atT0)/1000);
+ const s1=atSec(1,'Persisted to Postgres, the system of record','done',`✔ ${p.ms} ms readback`,
+  `<div><b>${esc(row.final_disposition||'—')}</b> · version ${row.version??'—'}${row.reviewer?` · by ${esc(row.reviewer)}`:''}${row.review_comment?`: “${esc(row.review_comment)}”`:''}</div>
+   <div class="sm m">Decision row and ${p.audit_rows.length} append-only audit events, written in one transaction (${esc(p.store)}).</div>
+   <div class="links">${atBtn('pg','Postgres SQL + result')}${pgq(p.sql)?consoleLinks(pgq(p.sql),p.sql,'Open in Postgres console'):''}</div>
+   <div class="tog ${atOpen.pg?'on':''}" id="tog-pg"><h5>Decision row</h5>${sqlBlock(p.sql,pgq(p.sql),'Open in Postgres console')}<div style="margin-top:8px">${tbl(p.rows)}</div>
+   <h5>Audit events</h5>${sqlBlock(p.audit_sql,pgq(p.audit_sql),'Open in Postgres console')}<div style="margin-top:8px">${tbl(p.audit_rows)}</div></div>`);
+ const st=c.status,ok=st=='replicated',wait=st=='syncing',lag=c.replication_lag_s;
+ const s2txt=ok?`✔ lag ${lag}s`:wait?(el>=180?'still syncing':`<span class="spin"></span> syncing… ${el}s`):esc(st);
+ const s2body=ok?`<div>ClickPipes replicated version <b>${c.want_version}</b> and all ${c.want_audit_events} audit events to ClickHouse <b class="y">${lag}s</b> after the Postgres commit (synced ${tm(c.synced_at)}).</div><div class="sm m">Log-based CDC from the Postgres WAL: no app code, no dual writes.</div>`:
+  wait?`<div>Waiting for ClickPipes to pick up version <b>${c.want_version}</b>${c.mirror_version!=null?` (mirror has v${c.mirror_version})`:''}. It syncs about every 60 s, so this takes a moment.</div>${el>=180?'<div class="notice warn">Still syncing after 3 minutes. Reopen this panel shortly, or check the ClickPipe.</div>':''}`:
+  `<div class="notice warn">${esc(c.note||st)}</div>`;
+ const s2=atSec(2,'Streamed to ClickHouse by ClickPipes CDC',ok?'done':wait?'wait':'',s2txt,s2body+`<div class="links"><a href="${L.clickpipes||'#'}" target="_blank">${L.clickpipe_id?'ClickPipe metrics':'ClickPipes (list)'}</a></div>`);
+ const d=(c.decision_rows||[])[0];
+ const s3=atSec(3,'The same row, queried in ClickHouse',ok?'done':wait?'wait':'',ok?`✔ ${c.decision_ms} ms`:wait?'waiting for step 2':'—',
+  `${ok?`<div><b>${esc(d.final_disposition)}</b> · version ${d.version} · ${c.audit_rows.length} audit events, read from <b>trade_demo_cdc</b> with FINAL (ReplacingMergeTree current state).</div>`:
+    wait?`<div class="sm m">The query below returns this row as soon as step 2 completes.${d?` Right now the mirror still shows ${esc(d.final_disposition)} v${d.version}.`:''}</div>`:`<div class="sm m">${esc(c.note||'')}</div>`}
+   <div class="links">${atBtn('ch','ClickHouse SQL + result')}${c.decision_sql?consoleLinks(nq(c.decision_sql,'trade_demo_cdc'),c.decision_sql,'Open in ClickHouse console'):''}<a href="${(L.tables||{}).cdc_decisions||'#'}" target="_blank">Mirror table</a></div>
+   <div class="tog ${atOpen.ch?'on':''}" id="tog-ch"><h5>Decision row in ClickHouse</h5>${sqlBlock(c.decision_sql,nq(c.decision_sql,'trade_demo_cdc'))}<div style="margin-top:8px">${c.decision_error?`<div class="m">${esc(c.decision_error)}</div>`:tbl(c.decision_rows)}</div>
+   <h5>Audit events in ClickHouse</h5>${sqlBlock(c.audit_sql,nq(c.audit_sql,'trade_demo_cdc'))}<div style="margin-top:8px">${c.audit_error?`<div class="m">${esc(c.audit_error)}</div>`:tbl(c.audit_rows)}</div></div>`);
+ const lfx=x.langfuse||{},O=L.observability||{};
+ const s4=lfx.score||lfx.trace_url?atSec(4,'Feedback for the AI team','done',lfx.score?'✔ scored':'',`<div>${lfx.score?`Langfuse score <b>${esc(lfx.score)}</b> recorded on this trade’s trace, so reviewer feedback is measurable.`:'This trade’s decision trace in Langfuse.'}</div>
+   <div class="links">${lfx.trace_url?`<a href="${lfx.trace_url}" target="_blank">Langfuse trace</a>`:''}${O.configured&&O.trade_template?`<a href="${O.trade_template.replace('__TID__',encodeURIComponent(x.trade_id))}" target="_blank">This trade in observability</a>`:''}</div>`):'';
+ $('at-body').innerHTML=s1+s2+s3+s4}
+/* ---------- audit strip ---------- */
+const WHO={app:'Trading app','rule-based-agent':'Decision agent','decision-service':'Decision service',presenter:'Reviewer'};
+const NAME={A:'Routine trade',B:'Large trade after spike',C:'Restricted account'};
+function evText(e){const p=e.payload||{},n=NAME[e.case_label]||e.case_label;switch(e.event_type){
+ case 'REQUESTED':return `${n}: order received, ${usd(p.notional_cents)} ${p.symbol||''} (acct ${p.account_id})`;
+ case 'RECOMMENDED':return `${n}: agent recommends ${p.recommendation=='AUTO_APPROVE'?'approval':'review'}`;
+ case 'AUTO_APPROVED':return `${n}: approved automatically`;case 'REVIEW_REQUESTED':return `${n}: sent to reviewer queue`;
+ case 'HUMAN_REJECTED':return `${n}: rejected${p.comment?' · “'+p.comment+'”':''}`;case 'HUMAN_APPROVED':return `${n}: approved by reviewer`;default:return `${n}: ${e.event_type}`}}
+let AUD=[];
+function drawAudit(au){const b=getBurst();let ev=au.slice().reverse().map(e=>({t:e.created_at,who:WHO[e.actor]||e.actor,txt:evText(e),raw:e}));
+ if(b)ev.push({t:b.at||b.inserted_at_utc,who:'Market feed',txt:`Activity spike: acct 1042 +${usd(b.burst_cents)} (visible in ${b.visible_after_ms} ms)`,raw:b});
+ ev.sort((x,y)=>new Date(x.t)-new Date(y.t));AUD=ev;
+ $('audit').innerHTML=ev.length?ev.map((e,i)=>`<div class="ev" onclick="auditDrawer(${i})" title="${esc(e.txt)}"><span class="tm">${tm(e.t)}</span><span class="who">${esc(e.who)}</span>${esc(e.txt)}</div>`).join(''):'<span class="m sm">Events appear here as the demo runs.</span>';
+ $('audit').scrollLeft=1e6}
+function auditDrawer(i){const e=AUD[i];openDrawer('Audit event',`<p><b>${esc(e.txt)}</b></p><p class="m">${tm(e.t)} · ${esc(e.who)}</p><h5>Raw record</h5><pre>${esc(JSON.stringify(e.raw,null,2))}</pre>`)}
+/* ---------- polling ---------- */
+async function refresh(){try{const d=await api('/api/trades');runId=d.run_id;trades=d.trades;const m=d.metrics;
+ if(view&&view.request&&view.request.run_id!=d.run_id){clearInterval(cdcTimer);view=null;shown=0;drawBrief();drawStage();
+  $('stage').innerHTML='<div id="empty">The demo was restarted, so this scenario’s earlier result was cleared. Press <b>▶ Run scenario</b> to play it again.</div>'}
+ $('counters').textContent=`This run: ${m.automated} automated · ${m.human_reviews} human-reviewed · ${m.pending} pending`;
+ drawAudit(await api('/api/audit'));drawTabs();if(cur&&!$('cmt'))drawBrief()}catch(e){trades=[];$('audit').innerHTML='<span class="m sm">Events appear here as the demo runs.</span>';$('counters').textContent=''}}
+async function loadHealth(){try{const h=await api('/health');health=h;const lbl={clickhouse:'ClickHouse Cloud',postgres:'Postgres',clickpipes:'ClickPipes CDC',langfuse:'Langfuse',mcp:'MCP tool',observability:'Observability'};
+ $('chips').innerHTML=Object.keys(lbl).map(k=>{const x=h[k]||{status:'not'};let t=lbl[k];if(k=='clickhouse'&&x.rows)t+=` · ${(x.rows/1e6).toFixed(1)}M rows`;
+  if(k=='clickpipes'){const m=(x.label||'').match(/last sync ([^)]*)/);t+=m?` · last sync ${m[1]}`:x.status=='running'?'':' · '+x.status}
+  if(k=='postgres'&&x.status=='fallback')t+=' (local)';if(k=='observability'&&x.status=='off')t+=' · off';
+  const O=L.observability||{},chip=`<span class="fc ${(x.status||'').split(' ')[0]}" title="${esc(x.label||'')} ${esc(x.error||'')}">${t}</span>`;
+  return (k=='observability'&&O.configured?`<a href="${O.service}" target="_blank" class="fclink">${chip}</a>`:chip)+' '}).join('')}catch(e){$('chips').textContent='status unavailable'}}
+function applyLinks(){if($('decklink'))$('decklink').hidden=!L.deck}
+async function init(){try{L=await api('/api/links')}catch(e){}applyLinks();
+ try{showStart(await api('/admin/start-demo'))}catch(e){}
+ await refresh();if(deep)await loadTrade(deep,true);else drawBrief();loadHealth()}
+init();setInterval(tick,5000);setInterval(refresh,3000);setInterval(loadHealth,30000);
+</script></body></html>

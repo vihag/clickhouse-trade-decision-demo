@@ -1,0 +1,16 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.pg_conn
+logs/
+evidence/previous_run/
+.run/
+.env.*
+!.env.example
+*.pem
+terraform.tfvars
+*.tfstate*
+.terraform/
+.compose.env

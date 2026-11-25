@@ -1,0 +1,30 @@
+name: one-command install
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  install-local:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: ./install.sh --local (Docker ClickHouse + Postgres, bootstrap, app, offline tests, scripted trial)
+        env:
+          TRIAL_SCREENSHOTS: "0"
+        run: ./install.sh --local
+      - name: Rerun is idempotent
+        env:
+          TRIAL_SCREENSHOTS: "0"
+        run: ./install.sh --local
+      - name: App log on failure
+        if: failure()
+        run: tail -n 200 logs/app.log || true
+      - name: Teardown
+        if: always()
+        run: make teardown
