@@ -7,6 +7,16 @@ import envfile
 
 
 def free(port: int) -> bool:
+    # Probe loopback first: on macOS SO_REUSEADDR lets bind(127.0.0.1) succeed even when another app/container
+    # is actively listening on 0.0.0.0:port or [::]:port.
+    for fam, addr in ((socket.AF_INET, "127.0.0.1"), (socket.AF_INET6, "::1")):
+        try:
+            with socket.socket(fam, socket.SOCK_STREAM) as c:
+                c.settimeout(0.2)
+                if c.connect_ex((addr, port)) == 0:
+                    return False
+        except OSError:
+            pass
     with socket.socket() as s:
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # ignore TIME_WAIT leftovers; only a live listener counts
         try:
